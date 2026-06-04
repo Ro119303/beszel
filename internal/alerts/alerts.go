@@ -230,13 +230,58 @@ func (am *AlertManager) SendAlert(data AlertMessageData) error {
 	return nil
 }
 
-// SendShoutrrrAlert sends an alert via a Shoutrrr URL
+// SendShoutrrrAlert sends an alert via a Shoutrrr URL or custom VK integration
 func (am *AlertManager) SendShoutrrrAlert(notificationUrl, title, message, link, linkText string) error {
 	// Parse the URL
 	parsedURL, err := url.Parse(notificationUrl)
 	if err != nil {
 		return fmt.Errorf("error parsing URL: %v", err)
 	}
+
+	// --- 🚀 НАЧАЛО: КАСТОМНАЯ ИНТЕГРАЦИЯ ВКОНТАКТЕ ---
+	if parsedURL.Scheme == "vk" {
+		// Формируем текст сообщения
+		vkMessage := title + "\n\n" + message
+		if link != "" {
+			vkMessage += "\n\n" + link
+		}
+
+		// Достаем параметры из ссылки
+		q := parsedURL.Query()
+		peerID := q.Get("peer_id")
+		accessToken := q.Get("access_token")
+		v := q.Get("v")
+		if v == "" {
+			v = "5.199" // Версия API по умолчанию, если не указана в ссылке
+		}
+
+		// Собираем правильное тело POST-запроса (application/x-www-form-urlencoded)
+		vkParams := url.Values{}
+		vkParams.Set("access_token", accessToken)
+		vkParams.Set("v", v)
+		vkParams.Set("peer_id", peerID)
+		vkParams.Set("random_id", "0")
+		vkParams.Set("message", vkMessage)
+
+		// Отправляем запрос напрямую
+		resp, err := http.PostForm("https://api.vk.com/method/messages.send", vkParams)
+		if err != nil {
+			am.hub.Logger().Error("Error sending VK alert", "err", err)
+			return err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 {
+			err := fmt.Errorf("VK API returned HTTP status: %d", resp.StatusCode)
+			am.hub.Logger().Error("Error sending VK alert", "err", err)
+			return err
+		}
+
+		am.hub.Logger().Info("Sent VK alert", "title", title)
+		return nil
+	}
+	// --- КОНЕЦ: КАСТОМНАЯ ИНТЕГРАЦИЯ ВКОНТАКТЕ ---
+
 	scheme := parsedURL.Scheme
 	queryParams := parsedURL.Query()
 
@@ -259,13 +304,14 @@ func (am *AlertManager) SendShoutrrrAlert(notificationUrl, title, message, link,
 	}
 
 	// Add link
-	if scheme == "ntfy" {
+	switch scheme {
+	case "ntfy":
 		queryParams.Add("Actions", fmt.Sprintf("view, %s, %s", linkText, link))
-	} else if scheme == "lark" {
+	case "lark":
 		queryParams.Add("link", link)
-	} else if scheme == "bark" {
+	case "bark":
 		queryParams.Add("url", link)
-	} else {
+	default:
 		message += "\n\n" + link
 	}
 
