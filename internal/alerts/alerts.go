@@ -231,7 +231,7 @@ func (am *AlertManager) SendAlert(data AlertMessageData) error {
 	return nil
 }
 
-// SendShoutrrrAlert sends an alert via a Shoutrrr URL or custom VK integration
+// SendShoutrrrAlert sends an alert via a Shoutrrr URL + custom VK integration
 func (am *AlertManager) SendShoutrrrAlert(notificationUrl, title, message, link, linkText string) error {
 	// Parse the URL
 	parsedURL, err := url.Parse(notificationUrl)
@@ -239,24 +239,18 @@ func (am *AlertManager) SendShoutrrrAlert(notificationUrl, title, message, link,
 		return fmt.Errorf("error parsing URL: %v", err)
 	}
 
-	// --- 🚀 НАЧАЛО: КАСТОМНАЯ ИНТЕГРАЦИЯ ВКОНТАКТЕ ---
 	if parsedURL.Scheme == "vk" {
-		// Формируем текст сообщения
 		vkMessage := title + "\n\n" + message
-		if link != "" {
-			vkMessage += "\n\n" + link
-		}
-
-		// Достаем параметры из ссылки
+		
 		q := parsedURL.Query()
 		peerID := q.Get("peer_id")
 		accessToken := q.Get("access_token")
 		v := q.Get("v")
 		if v == "" {
-			v = "5.199" // Версия API по умолчанию, если не указана в ссылке
+			v = "5.199" // default
 		}
 
-		// Собираем правильное тело POST-запроса (application/x-www-form-urlencoded)
+		// body  POST 
 		vkParams := url.Values{}
 		vkParams.Set("access_token", accessToken)
 		vkParams.Set("v", v)
@@ -264,7 +258,6 @@ func (am *AlertManager) SendShoutrrrAlert(notificationUrl, title, message, link,
 		vkParams.Set("random_id", "0")
 		vkParams.Set("message", vkMessage)
 
-		// Отправляем запрос напрямую
 		resp, err := http.PostForm("https://api.vk.com/method/messages.send", vkParams)
 		if err != nil {
 			am.hub.Logger().Error("Error sending VK alert", "err", err)
@@ -281,7 +274,6 @@ func (am *AlertManager) SendShoutrrrAlert(notificationUrl, title, message, link,
 		am.hub.Logger().Info("Sent VK alert", "title", title)
 		return nil
 	}
-	// --- КОНЕЦ: КАСТОМНАЯ ИНТЕГРАЦИЯ ВКОНТАКТЕ ---
 
 	scheme := parsedURL.Scheme
 	queryParams := parsedURL.Query()
